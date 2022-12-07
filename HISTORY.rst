@@ -2,6 +2,15 @@
 
 History
 -------
+0.3.0 (12/7/2022)
+* Fixed reverse conversions
+* Periods can now be in contig names
+* New file formats:
+ - .junc files from leafcutter/regtools
+ - .tab files from STAR
+* Now can convert multiple files at once using one vci
+* Haploid contigs in diploid vcis are handled appropriately (note: these frankenstein vcis still need to be made manually)
+* When reverse-converting a sam/bam from diploid coordinates back to reference haploid coordinates, reads have a 'vA' tag set to record the allele to which it originally aligned. This tag mirrors the 'vA' tag set by STAR.
 
 0.2.9 (10/01/2019)
 ~~~~~~~~~~~~~~~~~~
