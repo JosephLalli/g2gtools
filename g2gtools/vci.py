@@ -294,7 +294,7 @@ class VCIFile:
                     total_num_lines_processed += 1
 
 
-                if self.is_diploid():
+                if self.is_diploid() and (contig not in self.contigs):
                     interval = Interval(pos_from, self.contigs[contig[:-2]],
                                         IntervalInfo(contig, pos_to, pos_to + (self.contigs[contig[:-2]] - pos_from), None, None, None, None))
                 else:
