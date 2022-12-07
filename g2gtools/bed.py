@@ -95,7 +95,6 @@ class BED(object):
 
 
 # TODO: kb test
-from tqdm import tqdm
 def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
     """
     Convert BED coordinates.
@@ -155,7 +154,7 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
     success = 0
     fail = 0
 
-    for record in tqdm(bed_file):
+    for record in bed_file:
 
         LOG.debug("\nORIGINAL: {0}".format(str(bed_file.current_line).strip()))
 

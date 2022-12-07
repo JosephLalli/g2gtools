@@ -102,7 +102,6 @@ class BED(object):
 
 
 # TODO: kb test
-from tqdm import tqdm
 def convert_junc_file(vci_file, input_file, output_file=None, reverse=False):
     """
     Convert JUNC coordinates.
@@ -164,7 +163,7 @@ def convert_junc_file(vci_file, input_file, output_file=None, reverse=False):
     success = 0
     fail = 0
 
-    for record in tqdm(junc_file):
+    for record in junc_file:
 
         LOG.debug("\nORIGINAL: {0}".format(str(junc_file.current_line).strip()))
 
