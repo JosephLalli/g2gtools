@@ -96,7 +96,7 @@ LOG = g2g.get_logger()
 Cigar = namedtuple('Cigar', ['code', 'length', 'start', 'end'])
 
 
-def convert_bam_file(vci_file, file_in, file_out, reverse=False):
+def convert_bam_file(vci_file, file_in, file_out, reverse=False, add_allele_tag=True):
     """
     Convert genome coordinates (in BAM/SAM format) between assemblies.  These coordinates
     are stored in the :class:`.vci.VCIFile` object.
@@ -109,6 +109,9 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
     :type file_out: string
     :param reverse: reverse direction of original chain file
     :type reverse: boolean
+    :param add_allele_tag: if reversing diploid chain file, 
+                           record allele as b/sam tag
+    :type add_allele_tag: boolean
     """
 
     if file_out is None:
@@ -155,7 +158,7 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
     tmp = []
     name_to_id = {}
     id = 0
-    
+    contig_allele_num = {}
     # If converting reference to personal, then vci and sam have the same contig names.
     # If converting personal to reference, then vci and sam have different contig names.
     # Each vci contig should be the prefix of one or more sam contigs.
@@ -163,18 +166,13 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
     # So, both contig_L and contig_R should be assigned to the same id, contig's id
     for ref_name in vci_file.contigs:
         tmp.append({'LN': vci_file.contigs[ref_name], 'SN': ref_name})
-        name_to_id[ref_name] = sam_file.get_tid(ref_name)
         if vci_file.is_diploid() and reverse:
             personalized_contigs = [c for c in sam_file.references if c[:len(ref_name)] == ref_name] 
-            for multi_ploidy_contig in personalized_contigs:
+            for i, multi_ploidy_contig in enumerate(personalized_contigs):
                 name_to_id[multi_ploidy_contig] = id
+                contig_allele_num[multi_ploidy_contig] = i
         else:
             name_to_id[ref_name] = sam_file.get_tid(ref_name)
-        id += 1
-    
-    for ref_name in vci_file.contigs:
-        tmp.append({'LN': vci_file.contigs[ref_name], 'SN': ref_name})
-        name_to_id[ref_name] = sam_file.get_tid(ref_name)
         id += 1
 
     new_header['SQ'] = tmp
@@ -190,7 +188,7 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
     new_header['CO'].append("Original file: {0}".format(file_in))
     new_header['CO'].append("VCI File: {0}".format(vci_file.filename))
 
-    dir, temp_file_name = os.path.split(file_out)
+    _, temp_file_name = os.path.split(file_out)
     parts = temp_file_name.split('.')
     ext = parts[-1]
 
@@ -222,310 +220,315 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
                            'success_1_complex_2_fail': 0,
                            'success_1_complex_2_simple': 0,
                            'success_1_complex_2_complex': 0}
-
+    import tqdm
     try:
-        while True:
-            if total and total % 10000 == 0:
-                status_success = 0
-                status_failed = 0
+        with tqdm.tqdm() as pbar:
+            while True:
+                if total and total % 10000 == 0:
+                    status_success = 0
+                    status_failed = 0
 
-                for k, v in map_statistics_pair.items():
-                    if k.startswith('success'):
-                        status_success += v
-                    elif k.startswith('fail'):
-                        status_failed += v
+                    for k, v in map_statistics_pair.items():
+                        if k.startswith('success'):
+                            status_success += v
+                        elif k.startswith('fail'):
+                            status_failed += v
 
-                LOG.info("Processed {0:,} reads, {1:,} successful, {2:,} failed".format(total, status_success, status_failed))
+                    LOG.info("Processed {0:,} reads, {1:,} successful, {2:,} failed".format(total, status_success, status_failed))
 
-            if compat.is_py2:
-                alignment = sam_file.next()
-            else:
-                alignment = next(sam_file)
+                if compat.is_py2:
+                    alignment = sam_file.next()
+                else:
+                    alignment = next(sam_file)
 
-            alignment_new = pysam.AlignedRead()
-            read_chr = sam_file.getrname(alignment.tid)
+                alignment_new = pysam.AlignedRead()
+                read_chr = sam_file.getrname(alignment.tid)
 
-            # READ ONLY
+                # READ ONLY
 
-            # aend                  aligned reference position of the read on the reference genome
-            # alen                  aligned length of the read on the reference genome.
-            # positions             a list of reference positions that this read aligns to
-            # qend                  end index of the aligned query portion of the sequence (0-based, exclusive)
-            # qlen                  Length of the aligned query sequence
-            # qqual                 aligned query sequence quality values
-            # qstart                start index of the aligned query portion of the sequence (0-based, inclusive)
-            # query                 aligned portion of the read and excludes any flanking bases that were soft clipped
-            # rlen                  length of the read
+                # aend                  aligned reference position of the read on the reference genome
+                # alen                  aligned length of the read on the reference genome.
+                # positions             a list of reference positions that this read aligns to
+                # qend                  end index of the aligned query portion of the sequence (0-based, exclusive)
+                # qlen                  Length of the aligned query sequence
+                # qqual                 aligned query sequence quality values
+                # qstart                start index of the aligned query portion of the sequence (0-based, inclusive)
+                # query                 aligned portion of the read and excludes any flanking bases that were soft clipped
+                # rlen                  length of the read
 
-            # TRUE / FALSE (setting effects flag)
+                # TRUE / FALSE (setting effects flag)
 
-            # is_paired             true if read is paired in sequencing
-            # is_proper_pair        true if read is mapped in a proper pair
-            # is_qcfail             true if QC failure
-            # is_read1              true if this is read1
-            # is_read2              true if this is read2
-            # is_reverse            true if read is mapped to reverse strand
-            # is_secondary          true if not primary alignment
-            # is_unmapped           true if read itself is unmapped
-            # mate_is_reverse       true is read is mapped to reverse strand
-            # mate_is_unmapped      true if the mate is unmapped
+                # is_paired             true if read is paired in sequencing
+                # is_proper_pair        true if read is mapped in a proper pair
+                # is_qcfail             true if QC failure
+                # is_read1              true if this is read1
+                # is_read2              true if this is read2
+                # is_reverse            true if read is mapped to reverse strand
+                # is_secondary          true if not primary alignment
+                # is_unmapped           true if read itself is unmapped
+                # mate_is_reverse       true is read is mapped to reverse strand
+                # mate_is_unmapped      true if the mate is unmapped
 
-            # SET
+                # SET
 
-            # cigar                 cigar as list of tuples
-            # cigarstring           alignment as a string
-            # flag                  properties flag
-            # mapq                  mapping quality
-            # pnext                 the position of the mate
-            # pos                   0-based leftmost coordinate
-            # pnext                 the position of the mate
-            # qname                 the query name
-            # rnext                 the reference id of the mate
-            # seq                   read sequence bases, including soft clipped bases
-            # tid                   target id, contains the index of the reference sequence in the sequence dictionary
+                # cigar                 cigar as list of tuples
+                # cigarstring           alignment as a string
+                # flag                  properties flag
+                # mapq                  mapping quality
+                # pnext                 the position of the mate
+                # pos                   0-based leftmost coordinate
+                # pnext                 the position of the mate
+                # qname                 the query name
+                # rnext                 the reference id of the mate
+                # seq                   read sequence bases, including soft clipped bases
+                # tid                   target id, contains the index of the reference sequence in the sequence dictionary
 
-            # DON'T NEED TO SET or SHOULD WE SET?
+                # DON'T NEED TO SET or SHOULD WE SET?
 
-            # qual                  read sequence base qualities, including soft clipped bases
-            # tags                  the tags in the AUX field
-            # tlen                  insert size
+                # qual                  read sequence base qualities, including soft clipped bases
+                # tags                  the tags in the AUX field
+                # tlen                  insert size
 
-            total += 1
+                total += 1
 
-            LOG.debug('~'*80)
-            LOG.debug("Converting {0} {1} {2} {3}".format(alignment.qname, read_chr, alignment.pos, alignment.cigarstring))
+                LOG.debug('~'*80)
+                LOG.debug("Converting {0} {1} {2} {3}".format(alignment.qname, read_chr, alignment.pos, alignment.cigarstring))
 
-            if alignment.is_qcfail:
-                LOG.debug("\tFail due to qc of old alignment")
-                new_file_unmapped.write(alignment)
-                total_fail_qc += 1
-                continue
-
-            if alignment.is_unmapped:
-                LOG.debug("\tFail due to unmapped old alignment")
-                new_file_unmapped.write(alignment)
-                total_unmapped += 1
-                continue
-
-            if not alignment.is_paired:
-                LOG.debug("SINGLE END ALIGNMENT")
-                map_statistics['total'] += 1
-
-                alignment_new.seq = alignment.seq
-                alignment_new.flag = FLAG_NONE
-                alignment_new.mapq = alignment.mapq
-                alignment_new.qname = alignment.qname
-                alignment_new.qual = alignment.qual
-                alignment_new.tags = alignment.tags
-
-                read_start = alignment.pos
-                read_end = alignment.aend
-                read_strand = '-' if alignment.is_reverse else '+'
-
-                mappings = vci_file.find_mappings(read_chr, read_start, read_end)
-
-
-                # unmapped
-                if mappings is None:
-                    LOG.debug("\tFail due to no mappings")
+                if alignment.is_qcfail:
+                    LOG.debug("\tFail due to qc of old alignment")
                     new_file_unmapped.write(alignment)
-                    map_statistics['fail_cannot_map'] += 1
+                    total_fail_qc += 1
+                    continue
 
-                elif len(mappings) == 1:
+                if alignment.is_unmapped:
+                    LOG.debug("\tFail due to unmapped old alignment")
+                    new_file_unmapped.write(alignment)
+                    total_unmapped += 1
+                    continue
+
+                if not alignment.is_paired:
+                    LOG.debug("SINGLE END ALIGNMENT")
+                    map_statistics['total'] += 1
+
+                    alignment_new.seq = alignment.seq
+                    alignment_new.flag = FLAG_NONE
+                    alignment_new.mapq = alignment.mapq
+                    alignment_new.qname = alignment.qname
+                    alignment_new.qual = alignment.qual
+                    alignment_new.tags = alignment.tags
+                    if add_allele_tag:
+                        alignment_new.set_tag(tag='vA', value=contig_allele_num[alignment.seq], value_type='i')
+
+                    read_start = alignment.pos
+                    read_end = alignment.aend
+                    read_strand = '-' if alignment.is_reverse else '+'
+
+                    mappings = vci_file.find_mappings(read_chr, read_start, read_end)
+
+
+                    # unmapped
+                    if mappings is None:
+                        LOG.debug("\tFail due to no mappings")
+                        new_file_unmapped.write(alignment)
+                        map_statistics['fail_cannot_map'] += 1
+
+                    elif len(mappings) == 1:
+                        if alignment.is_reverse:
+                            alignment_new.flag |= FLAG_REVERSE
+
+                        alignment_new.tid = name_to_id[mappings[0].to_chr]
+                        alignment_new.pos = mappings[0].to_start
+                        alignment_new.cigar = alignment.cigar
+                        new_file.write(alignment_new)
+
+                        LOG.debug("\tSuccess (simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        map_statistics['success_simple'] += 1
+
+                    else:
+                        LOG.debug("MAPPINGS: {0}".format(len(mappings)))
+                        for m in mappings:
+                            LOG.debug("> {0}".format(m))
+
+                        if alignment.is_reverse:
+                            alignment_new.flag |= FLAG_REVERSE
+
+                        alignment_new.tid = name_to_id[mappings[0].to_chr]
+                        alignment_new.pos = mappings[0].to_start
+                        alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read_strand, alignment.pos)
+                        new_file.write(alignment_new)
+
+                        LOG.debug("\tSuccess (complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        map_statistics['success_complex'] += 1
+
+                else:
+                    LOG.debug("PAIRED END ALIGNMENT")
+                    map_statistics_pair['total'] += 1
+
+                    alignment_new.seq = alignment.seq
+                    alignment_new.flag = FLAG_PAIRED
+                    alignment_new.mapq = alignment.mapq
+                    alignment_new.qname = alignment.qname
+                    alignment_new.qual = alignment.qual
+                    alignment_new.tags = alignment.tags
+                    if add_allele_tag:
+                        alignment_new.set_tag(tag='vA', value=contig_allele_num[alignment.seq], value_type='i')
+
+                    if alignment.is_read1:
+                        alignment_new.flag |= FLAG_READ1
+                    if alignment.is_read2:
+                        alignment_new.flag |= FLAG_READ2
+
                     if alignment.is_reverse:
                         alignment_new.flag |= FLAG_REVERSE
+                    if alignment.mate_is_reverse:
+                        alignment_new.flag |= FLAG_MREVERSE
 
-                    alignment_new.tid = name_to_id[mappings[0].to_chr]
-                    alignment_new.pos = mappings[0].to_start
-                    alignment_new.cigar = alignment.cigar
-                    new_file.write(alignment_new)
+                    read1_chr = sam_file.getrname(alignment.tid)
+                    read1_start = alignment.pos
+                    read1_end = alignment.aend
+                    read1_strand = '-' if alignment.is_reverse else '+'
+                    read1_mappings = vci_file.find_mappings(read1_chr, read1_start, read1_end) #, read1_strand)
 
-                    LOG.debug("\tSuccess (simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    map_statistics['success_simple'] += 1
+                    if alignment.mate_is_unmapped:
+                        alignment_new.flag |= FLAG_MUNMAP
+                    else:
+                        read2_chr = sam_file.getrname(alignment.rnext)
+                        read2_start = alignment.pnext
+                        read2_end = read2_start + 1
+                        read2_strand = '-' if alignment.mate_is_reverse else '+'
+                        try:
+                            read2_mappings = vci_file.find_mappings(read2_chr, read2_start, read2_end) #, read2_strand)
+                        except:
+                            read2_mappings = None
 
-                else:
-                    LOG.debug("MAPPINGS: {0}".format(len(mappings)))
-                    for m in mappings:
-                        LOG.debug("> {0}".format(m))
+                    if read1_mappings is None and read2_mappings is None:
 
-                    if alignment.is_reverse:
-                        alignment_new.flag |= FLAG_REVERSE
+                        alignment_new.flag |= FLAG_UNMAP
+                        alignment_new.flag |= FLAG_MUNMAP
 
-                    alignment_new.tid = name_to_id[mappings[0].to_chr]
-                    alignment_new.pos = mappings[0].to_start
-                    alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read_strand, alignment.pos)
-                    new_file.write(alignment_new)
+                        LOG.debug("\tFail due to no mappings")
+                        new_file_unmapped.write(alignment)
+                        map_statistics_pair['fail_cannot_map'] += 1
 
-                    LOG.debug("\tSuccess (complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    map_statistics['success_complex'] += 1
+                    elif read1_mappings is None and read2_mappings and len(read2_mappings) == 1:
 
-            else:
-                LOG.debug("PAIRED END ALIGNMENT")
-                map_statistics_pair['total'] += 1
+                        alignment_new.flag |= FLAG_UNMAP
 
-                alignment_new.seq = alignment.seq
-                alignment_new.flag = FLAG_PAIRED
-                alignment_new.mapq = alignment.mapq
-                alignment_new.qname = alignment.qname
-                alignment_new.qual = alignment.qual
-                alignment_new.tags = alignment.tags
+                        alignment_new.pos = 0
+                        alignment_new.cigarstring = '0M'
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0
 
-                if alignment.is_read1:
-                    alignment_new.flag |= FLAG_READ1
-                if alignment.is_read2:
-                    alignment_new.flag |= FLAG_READ2
+                        LOG.debug("\tPair Success (1:fail,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_fail_2_simple'] += 1
 
-                if alignment.is_reverse:
-                    alignment_new.flag |= FLAG_REVERSE
-                if alignment.mate_is_reverse:
-                    alignment_new.flag |= FLAG_MREVERSE
+                    elif read1_mappings is None and read2_mappings and len(read2_mappings) > 1:
 
-                read1_chr = sam_file.getrname(alignment.tid)
-                read1_start = alignment.pos
-                read1_end = alignment.aend
-                read1_strand = '-' if alignment.is_reverse else '+'
-                read1_mappings = vci_file.find_mappings(read1_chr, read1_start, read1_end) #, read1_strand)
+                        alignment_new.flag |= FLAG_UNMAP
 
-                if alignment.mate_is_unmapped:
-                    alignment_new.flag |= FLAG_MUNMAP
-                else:
-                    read2_chr = sam_file.getrname(alignment.rnext)
-                    read2_start = alignment.pnext
-                    read2_end = read2_start + 1
-                    read2_strand = '-' if alignment.mate_is_reverse else '+'
-                    try:
-                        read2_mappings = vci_file.find_mappings(read2_chr, read2_start, read2_end) #, read2_strand)
-                    except:
-                        read2_mappings = None
+                        alignment_new.pos = 0
+                        alignment_new.cigarstring = '0M'
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0
 
-                if read1_mappings is None and read2_mappings is None:
+                        LOG.debug("\tPair Success (1:fail,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_fail_2_complex'] += 1
 
-                    alignment_new.flag |= FLAG_UNMAP
-                    alignment_new.flag |= FLAG_MUNMAP
+                    elif read1_mappings and len(read1_mappings) == 1 and read2_mappings is None:
 
-                    LOG.debug("\tFail due to no mappings")
-                    new_file_unmapped.write(alignment)
-                    map_statistics_pair['fail_cannot_map'] += 1
+                        alignment_new.flag |= FLAG_MUNMAP
 
-                elif read1_mappings is None and read2_mappings and len(read2_mappings) == 1:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = alignment.cigar
 
-                    alignment_new.flag |= FLAG_UNMAP
+                        alignment_new.rnext = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pnext = 0
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.pos = 0
-                    alignment_new.cigarstring = '0M'
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0
+                        LOG.debug("\tPair Success (1:simple,2:fail): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_simple_2_fail'] += 1
 
-                    LOG.debug("\tPair Success (1:fail,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_fail_2_simple'] += 1
+                    elif read1_mappings and len(read1_mappings) == 1 and read2_mappings and len(read2_mappings) == 1:
 
-                elif read1_mappings is None and read2_mappings and len(read2_mappings) > 1:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = alignment.cigar
 
-                    alignment_new.flag |= FLAG_UNMAP
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.pos = 0
-                    alignment_new.cigarstring = '0M'
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0
+                        LOG.debug("\tPair Success (1:simple,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_simple_2_simple'] += 1
 
-                    LOG.debug("\tPair Success (1:fail,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_fail_2_complex'] += 1
+                    elif read1_mappings and len(read1_mappings) == 1 and read2_mappings and len(read2_mappings) > 1:
 
-                elif read1_mappings and len(read1_mappings) == 1 and read2_mappings is None:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = alignment.cigar
 
-                    alignment_new.flag |= FLAG_MUNMAP
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = alignment.cigar
+                        LOG.debug("\tPair Success (1:simple,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_simple_2_complex'] += 1
 
-                    alignment_new.rnext = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pnext = 0
-                    alignment_new.tlen = 0    # CHECK
+                    elif read1_mappings and len(read1_mappings) > 1 and read2_mappings is None:
 
-                    LOG.debug("\tPair Success (1:simple,2:fail): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_simple_2_fail'] += 1
+                        alignment_new.flag |= FLAG_MUNMAP
 
-                elif read1_mappings and len(read1_mappings) == 1 and read2_mappings and len(read2_mappings) == 1:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
 
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = alignment.cigar
+                        alignment_new.rnext = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pnext = 0
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0    # CHECK
+                        LOG.debug("\tPair Success (1:complex,2:fail): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_complex_2_fail'] += 1
 
-                    LOG.debug("\tPair Success (1:simple,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_simple_2_simple'] += 1
+                    elif read1_mappings and len(read1_mappings) > 1 and read2_mappings and len(read2_mappings) == 1:
 
-                elif read1_mappings and len(read1_mappings) == 1 and read2_mappings and len(read2_mappings) > 1:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
 
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = alignment.cigar
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0    # CHECK
+                        LOG.debug("\tPair Success (1:complex,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_complex_2_simple'] += 1
 
-                    LOG.debug("\tPair Success (1:simple,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_simple_2_complex'] += 1
+                    elif read1_mappings and len(read1_mappings) > 1 and read2_mappings and len(read2_mappings) > 1:
 
-                elif read1_mappings and len(read1_mappings) > 1 and read2_mappings is None:
+                        alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
+                        alignment_new.pos = read1_mappings[0].to_start
+                        alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
 
-                    alignment_new.flag |= FLAG_MUNMAP
+                        alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
+                        alignment_new.pnext = read2_mappings[0].to_start
+                        alignment_new.tlen = 0    # CHECK
 
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
+                        LOG.debug("\tPair Success (1:complex,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
+                        new_file.write(alignment_new)
+                        map_statistics_pair['success_1_complex_2_complex'] += 1
 
-                    alignment_new.rnext = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pnext = 0
-                    alignment_new.tlen = 0    # CHECK
-
-                    LOG.debug("\tPair Success (1:complex,2:fail): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_complex_2_fail'] += 1
-
-                elif read1_mappings and len(read1_mappings) > 1 and read2_mappings and len(read2_mappings) == 1:
-
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
-
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0    # CHECK
-
-                    LOG.debug("\tPair Success (1:complex,2:simple): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_complex_2_simple'] += 1
-
-                elif read1_mappings and len(read1_mappings) > 1 and read2_mappings and len(read2_mappings) > 1:
-
-                    alignment_new.tid = name_to_id[read1_mappings[0].to_chr]
-                    alignment_new.pos = read1_mappings[0].to_start
-                    alignment_new.cigar = convert_cigar(alignment.cigar, read_chr, vci_file, alignment.seq, read1_strand, alignment.pos)
-
-                    alignment_new.rnext = name_to_id[read2_mappings[0].to_chr]
-                    alignment_new.pnext = read2_mappings[0].to_start
-                    alignment_new.tlen = 0    # CHECK
-
-                    LOG.debug("\tPair Success (1:complex,2:complex): {0} {1}".format(alignment_new.pos, alignment_new.cigarstring))
-                    new_file.write(alignment_new)
-                    map_statistics_pair['success_1_complex_2_complex'] += 1
-
-                else:
-                    raise exceptions.G2GBAMError("Unknown BAM/SAM conversion/parse situation")
-
+                    else:
+                        raise exceptions.G2GBAMError("Unknown BAM/SAM conversion/parse situation")
+                pbar.update()
     except StopIteration:
         LOG.info("All reads processed")
 
