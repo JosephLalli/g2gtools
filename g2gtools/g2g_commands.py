@@ -109,6 +109,7 @@ def command_convert(raw_args, prog=None):
             if file_format not in ['BED', 'BAM', 'SAM', 'GTF', 'GFF', 'JUNC','TAB']:  # ** added 'GFF'
                 raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, BED to BED, JUNC to JUNC, or TAB to TAB are supported")
 
+        vci_file = args.vci
         vci_file = g2g_utils.check_file(vci_file)
         vci_file = vci.VCIFile(vci_file)
         vci_file.parse(args.reverse)
@@ -140,20 +141,20 @@ def command_convert(raw_args, prog=None):
                     raise exceptions.G2GValueError("File format cannot be determined, please specify.")
 
             if file_format in ['BAM', 'SAM']:
-                bsam.convert_bam_file(vci_file=args.vci, file_in=args.input, file_out=outfile, reverse=args.reverse)
+                bsam.convert_bam_file(vci_file=vci_file, file_in=file, file_out=outfile, reverse=args.reverse)
             elif file_format in ['GTF']:
-                gtf.convert_gtf_file(vci_file=args.vci, input_file=args.input, output_file=outfile, reverse=args.reverse)
+                gtf.convert_gtf_file(vci_file=vci_file, input_file=file, output_file=outfile, reverse=args.reverse)
             elif file_format in ['BED']:
-                bed.convert_bed_file(vci_file=args.vci, input_file=args.input, output_file=outfile, reverse=args.reverse)
+                bed.convert_bed_file(vci_file=vci_file, input_file=file, output_file=outfile, reverse=args.reverse)
             elif file_format in ['TAB']:
-                star_tab.convert_tab_file(vci_file=args.vci, input_file=args.input, output_file=outfile, reverse=args.reverse)
+                star_tab.convert_tab_file(vci_file=vci_file, input_file=file, output_file=outfile, reverse=args.reverse)
             elif file_format in ['JUNC']:
-                junc.convert_junc_file(vci_file=args.vci, input_file=args.input, output_file=outfile, reverse=args.reverse)
+                junc.convert_junc_file(vci_file=vci_file, input_file=file, output_file=outfile, reverse=args.reverse)
 
             # added ** to include GFF parsing
             # it will still use the same module "gtf" but different function convert_gff_file
             elif file_format in ['GFF']:
-                gtf.convert_gff_file(vci_file=args.vci, input_file=args.input, output_file=outfile, reverse=args.reverse)
+                gtf.convert_gff_file(vci_file=vci_file, input_file=args.input, output_file=outfile, reverse=args.reverse)
 
             else:
                 raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, or BED to BED are supported")
