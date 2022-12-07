@@ -155,7 +155,23 @@ def convert_bam_file(vci_file, file_in, file_out, reverse=False):
     tmp = []
     name_to_id = {}
     id = 0
-
+    
+    # If converting reference to personal, then vci and sam have the same contig names.
+    # If converting personal to reference, then vci and sam have different contig names.
+    # Each vci contig should be the prefix of one or more sam contigs.
+    # Name to id converts input sam contig names to output tids. 
+    # So, both contig_L and contig_R should be assigned to the same id, contig's id
+    for ref_name in vci_file.contigs:
+        tmp.append({'LN': vci_file.contigs[ref_name], 'SN': ref_name})
+        name_to_id[ref_name] = sam_file.get_tid(ref_name)
+        if vci_file.is_diploid() and reverse:
+            personalized_contigs = [c for c in sam_file.references if c[:len(ref_name)] == ref_name] 
+            for multi_ploidy_contig in personalized_contigs:
+                name_to_id[multi_ploidy_contig] = id
+        else:
+            name_to_id[ref_name] = sam_file.get_tid(ref_name)
+        id += 1
+    
     for ref_name in vci_file.contigs:
         tmp.append({'LN': vci_file.contigs[ref_name], 'SN': ref_name})
         name_to_id[ref_name] = sam_file.get_tid(ref_name)
