@@ -15,8 +15,19 @@ from . import g2g
 from . import g2g_utils
 from . import vci
 
-bed_fields = ["chrom", "start", "end", "name", "score", "strand", "extra"]
-BEDRecord = collections.namedtuple("BEDRecord", bed_fields)
+bed_fields = ["chrom", "start", "end", "strand", "motif", "annotated", "unique_reads", "multimap", "max_overhang"]
+TabRecord = collections.namedtuple("TabRecord", bed_fields)
+
+def add_TabRecords(a, b):
+    assert a[0:3] == b[0:3]
+    assert a[4] == b[4] # if motifs are different, then splice sites are altered and should not be merged.
+    if a['annotated'] != b['annotated']:
+        raise AttributeError
+    annotated = max(a[5], b[5]) #if one is annotated and the other isn't, then consider the site annotated. (note: this probably shouldn't happen.)
+    unique_reads = a[6] + b[6]
+    multimap = (a[7] + b[7]) / 2 # ASSUMING *heuristic* that multimappers in same junction on different contigs likely mapped to both contigs, and should only be counted once
+    max_overhang = max(a[8], b[8])
+    return TabRecord(a[0:4] + (annotated, unique_reads, multimap, max_overhang))
 
 LOG = g2g.get_logger()
 
@@ -76,15 +87,9 @@ class BED(object):
                 raise exceptions.G2GBedError("Improperly formatted BED file")
 
         try:
-            bed_data = {'chrom': elem[0],
-                        'start': int(elem[1]),
-                        'end': int(elem[2]),
-                        'name': elem[3] if self.nitems > 3 else None,
-                        'score': elem[4] if self.nitems > 4 else None,
-                        'strand':  elem[5] if self.nitems > 5 else None,
-                        'extra': elem[6:] if self.nitems > 6 else None}
+            bed_data = {field: datum for field, datum in zip(bed_fields, elem)}
 
-            self.current_record = BEDRecord(**bed_data)
+            self.current_record = TabRecord(**bed_data)
             return self.current_record
         except IndexError as ie:
             LOG.debug(ie.message)
@@ -96,9 +101,9 @@ class BED(object):
 
 # TODO: kb test
 from tqdm import tqdm
-def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
+def convert_tab_file(vci_file, input_file, output_file=None, reverse=False):
     """
-    Convert BED coordinates.
+    Convert TAB coordinates.
 
     :param vci_file: VCI input file
     :type vci_file: :class:`.chain.ChainFile`
@@ -146,6 +151,8 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
     left_right = [''] if vci_file.is_haploid() else ['_L', '_R']
 
     oldname_to_newname = dict()
+    if reverse:
+        uniq_junctions = dict()
 
     LOG.info("Converting BED file...")
 
@@ -214,18 +221,30 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
             elems[1] = start
             elems[2] = end
 
-            LOG.debug("     NEW: {0}".format("\t".join(map(str, elems))))
-
-            bed_out.write("\t".join(map(str, elems)))
-            bed_out.write("\n")
+            converted_junc = {field: datum for field, datum in zip(bed_fields, elems)}
+            converted_junc[bed_fields[0]] = seqid
+            converted_junc[bed_fields[1]] = start
+            converted_junc[bed_fields[2]] = end
+            converted_junc = TabRecord(**converted_junc)
 
             # if we're converting back to haploid, we don't want to do this twice
+            junc_id = seqid+str(start)+str(end)
+            if junc_id in uniq_junctions:
+                uniq_junctions[junc_id] = converted_junc
+            else:
+                uniq_junctions[junc_id] = add_TabRecords(uniq_junctions[junc_id], converted_junc)
             if reverse:
                 break
+    
+    for id, junc in uniq_junctions.items():
+        LOG.debug("     NEW: {0}".format("\t".join(map(str, elems))))
+        bed_out.write("\t".join(map(str, junc)))
+        bed_out.write("\n")
+
 
     bed_out.close()
     bed_unmapped_file.close()
 
     LOG.info("Converted {0:,} of {1:,} records".format(success, total))
-    LOG.info('BED file converted')
+    LOG.info('TAB file converted')
 

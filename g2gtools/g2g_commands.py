@@ -13,6 +13,8 @@ from . import g2g
 from . import g2g_utils
 from . import gtf
 from . import gtf_db
+from . import junc
+from . import star_tab
 from . import vci
 from . import vcf2vci
 
@@ -65,12 +67,13 @@ def command_convert(raw_args, prog=None):
     parser.error = print_message
 
     # required
-    parser.add_argument("-i", "--input", dest="input", metavar="Input_File")
+    parser.add_argument("-i", "--input", action="extend", nargs="+", type=str,
+                                       dest="input", metavar="Input_File(s)")
     parser.add_argument("-c", "--vci", dest="vci", metavar="VCI_File")
 
     # optional
-    parser.add_argument("-f", "--format", dest="format", metavar='bam|sam|gtf|bed',
-                        choices=['bam', 'sam', 'gtf', 'bed', 'gff'])  # ** added 'gff'
+    parser.add_argument("-f", "--format", dest="format", metavar='bam|sam|gtf|bed|gff|junc|tab',
+                        choices=['bam', 'sam', 'gtf', 'bed', 'gff', 'junc','tab'])  # ** added 'gff'
     parser.add_argument("-o", "--output", dest="output", metavar="Output_File")
     parser.add_argument("--reverse", dest="reverse", action='store_true')
 
@@ -92,47 +95,58 @@ def command_convert(raw_args, prog=None):
         g2g.exit("No VCI file was specified.", parser)
 
     try:
-        file_format = None  # prolly unnecessary 
-
         if args.format:
             #file_format = file_format.upper()
             file_format = args.format.upper()  # ** this prolly was a bug
 
-            if file_format not in ['BED', 'BAM', 'SAM', 'GTF', 'GFF']:  # ** added 'GFF'
-                raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, or BED to BED are supported")
-        else:
-            # try to determine the type from the input
-            file_all_caps = args.input.upper()
-            if file_all_caps.endswith(('BAM', 'SAM')):
-                file_format = 'BAM'
-            elif file_all_caps.endswith('BED'):
-                file_format = 'BED'
-            elif file_all_caps.endswith('GTF'):
-                file_format = 'GTF'
+            if file_format not in ['BED', 'BAM', 'SAM', 'GTF', 'GFF', 'JUNC','TAB']:  # ** added 'GFF'
+                raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, BED to BED, JUNC to JUNC, or TAB to TAB are supported")
 
-            # addded **
-            elif file_all_caps.endswith('GFF'):
-                file_format = 'GFF'
+        vci_file = g2g_utils.check_file(vci_file)
+        vci_file = vci.VCIFile(vci_file)
+        vci_file.parse(args.reverse)
+
+        for file in args.input:
+            file_format = None  # prolly unnecessary 
+
+            if not args.format:
+                # try to determine the type from the input
+                file_all_caps = file.upper()
+                if file_all_caps.endswith(('BAM', 'SAM')):
+                    file_format = 'BAM'
+                elif file_all_caps.endswith('BED'):
+                    file_format = 'BED'
+                elif file_all_caps.endswith('GTF'):
+                    file_format = 'GTF'
+
+                # addded **
+                elif file_all_caps.endswith('GFF'):
+                    file_format = 'GFF'
+                elif file_all_caps.endswith('JUNC'):
+                    file_format = 'JUNC'            
+                elif file_all_caps.endswith('TAB'):
+                    file_format = 'TAB'
+                else:
+                    raise exceptions.G2GValueError("File format cannot be determined, please specify.")
+
+            if file_format in ['BAM', 'SAM']:
+                bsam.convert_bam_file(vci_file=args.vci, file_in=args.input, file_out=args.output, reverse=args.reverse)
+            elif file_format in ['GTF']:
+                gtf.convert_gtf_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
+            elif file_format in ['BED']:
+                bed.convert_bed_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
+            elif file_format in ['TAB']:
+                star_tab.convert_tab_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
+            elif file_format in ['JUNC']:
+                junc.convert_junc_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
+
+            # added ** to include GFF parsing
+            # it will still use the same module "gtf" but different function convert_gff_file
+            elif file_format in ['GFF']:
+                gtf.convert_gff_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
 
             else:
-                raise exceptions.G2GValueError("File format cannot be determined, please specify.")
-
-        if file_format in ['BAM', 'SAM']:
-            bsam.convert_bam_file(vci_file=args.vci, file_in=args.input, file_out=args.output, reverse=args.reverse)
-        elif file_format in ['GTF']:
-            gtf.convert_gtf_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
-        elif file_format in ['BED']:
-            bed.convert_bed_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
-
-
-        # added ** to include GFF parsing
-        # it will still use the same module "gtf" but different function convert_gff_file
-        elif file_format in ['GFF']:
-            gtf.convert_gff_file(vci_file=args.vci, input_file=args.input, output_file=args.output, reverse=args.reverse)
-
-
-        else:
-            raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, or BED to BED are supported")
+                raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, or BED to BED are supported")
     except KeyboardInterrupt as ki:
         LOG.debug(ki)
     except exceptions.G2GValueError as ve:

@@ -162,12 +162,17 @@ class VCIFile:
         self.seq_ids = seq_ids
         self.is_reversed = reverse
         self.contigs = {}
+        
 
         self._tabix_file = pysam.TabixFile(self.filename, mode=mode, parser=parser, index=index, encoding=encoding)
 
         g2g_utils.index_file(original_file=filename, file_format="vci", overwrite=False)
 
         self.parse_header()
+        if 'DIPLOID' in self.headers:
+            self.diploid = self.headers['DIPLOID'].lower() in ['true', 't', 'yes', '1']
+        else:
+            self.diploid = False
 
     def __getattr__(self, name):
         return getattr(self._tabix_file, name)
@@ -177,15 +182,10 @@ class VCIFile:
         return self._tabix_file.fetch(reference, start, end, region, parser, multiple_iterators)
 
     def is_diploid(self):
-        if 'DIPLOID' in self.headers:
-            return self.headers['DIPLOID'].lower() in ['true', 't', 'yes', '1']
-        return False
+        return self.diploid
 
     def is_haploid(self):
-        if 'DIPLOID' in self.headers:
-            if self.headers['DIPLOID'].lower() in ['true', 't', 'yes', '1']:
-                return False
-        return True
+        return not self.diploid
 
     def parse_header(self):
         self.headers = {}
@@ -208,7 +208,6 @@ class VCIFile:
         return None
 
     def parse(self, reverse):
-
         start = time.time()
         mapping_tree = {}
         try:
@@ -229,11 +228,11 @@ class VCIFile:
 
             # create a bx tree for the indels
             for contig in contigs:
-                comtig_start_time = time.time()
+                # comtig_start_time = time.time()
 
                 LOG.info("Parsing VCI, contig: {}".format(contig))
-                num_lines_chrom = 0
-                num_lines_processed = 0
+                # num_lines_chrom = 0
+                # num_lines_processed = 0
 
                 pos_from = 0
                 pos_to = 0
@@ -250,10 +249,17 @@ class VCIFile:
 
                 if iterator is None:
                     continue
+                
+                if self.is_haploid() or (self.is_diploid() and (contig in self.contigs.keys())):
+                    ref_contig = contig
+                    transformed_contig = contig # with _L / _R
+                else:
+                    ref_contig = contig[:-2]
+                    transformed_contig = contig
 
                 for rec in iterator:
-                    num_lines_chrom += 1
-                    total_num_lines_chrom += 1
+                    # num_lines_chrom += 1
+                    # total_num_lines_chrom += 1
 
                     if len(rec) != 6:
                         raise exceptions.G2GError("Unexpected line in VCI file. Line #{0:,}: {1}".format(total_num_lines_chrom, rec))
@@ -290,20 +296,22 @@ class VCIFile:
 
                     pos_from += (fragment + deleted_bases)
                     pos_to += (fragment + inserted_bases)
-                    num_lines_processed += 1
-                    total_num_lines_processed += 1
+                    # num_lines_processed += 1
+                    # total_num_lines_processed += 1
 
+                # vci file contigs are always 'reference' format (eg, without diploid suffixes).
+                # per record contigs are always transformed
+                # if contig is haploid, 'transformed' contig format has no suffix.
+                # if contig is diploid, 'transformed' contig format has suffix.
+                # self.contigs is always reference.
+                # Interval info is where transformed contig is drawn from.
+                # if file is diploid and the direction is reverse, then transformed will be equal to reference
 
-                if self.is_diploid() and (contig not in self.contigs):
-                    interval = Interval(pos_from, self.contigs[contig[:-2]],
-                                        IntervalInfo(contig, pos_to, pos_to + (self.contigs[contig[:-2]] - pos_from), None, None, None, None))
-                else:
-                    interval = Interval(pos_from, self.contigs[contig],
-                                        IntervalInfo(contig, pos_to, pos_to + (self.contigs[contig] - pos_from), None, None, None, None))
+                interval = Interval(pos_from, self.contigs[ref_contig],
+                                    IntervalInfo(transformed_contig, pos_to, pos_to + (self.contigs[ref_contig] - pos_from), None, None, None, None))
+                mapping_tree[transformed_contig].insert_interval(interval)
 
-                mapping_tree[contig].insert_interval(interval)
-
-                LOG.debug("Parsed {0:,} lines for contig {1} in {2}".format(num_lines_processed, contig, g2g_utils.format_time(comtig_start_time, time.time())))
+                # print("Parsed {0:,} lines for contig {1} in {2}".format(num_lines_processed, contig, g2g_utils.format_time(comtig_start_time, time.time())))
 
             self.valid = True
             self.mapping_tree = mapping_tree
@@ -364,7 +372,6 @@ class VCIFile:
 
         return None
 
-
     def find_mappings(self, chromosome, start, end):
         """
         Find mapping from source to target
@@ -378,8 +385,8 @@ class VCIFile:
         mappings = []
 
         if chromosome not in self.mapping_tree:
-            LOG.debug("Chromosome {} not found in mapping tree".format(chromosome))
-            LOG.debug("Available chromsomes are: {}".format(self.mapping_tree.keys()))
+            print("Chromosome {} not found in mapping tree".format(chromosome))
+            print("Available chromsomes are: {}".format(self.mapping_tree.keys()))
             return None
         else:
             LOG.debug("Chromosome {}, in mapping tree".format(chromosome))

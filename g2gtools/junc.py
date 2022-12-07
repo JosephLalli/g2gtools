@@ -15,8 +15,15 @@ from . import g2g
 from . import g2g_utils
 from . import vci
 
-bed_fields = ["chrom", "start", "end", "name", "score", "strand", "extra"]
-BEDRecord = collections.namedtuple("BEDRecord", bed_fields)
+
+junc_fields = ["chrom", "start", "end", "name", "score", "strand", "extra"]
+JuncRecord = collections.namedtuple("JuncRecord", junc_fields)
+
+def add_JuncRecords(a, b):
+    assert a[0:3] == b[0:3]
+    a[4] = a[4] + b[4]
+    return JuncRecord(a[0:6])
+
 
 LOG = g2g.get_logger()
 
@@ -33,7 +40,7 @@ class BED(object):
 
         self.filename = filename
         self.current_line = None
-        self.current_line_is_bed = False
+        self.current_line_is_junc = False
         self.current_record = None
         self.reader = g2g_utils.open_resource(filename)
         self.nitems = None
@@ -62,11 +69,11 @@ class BED(object):
 
         if self.current_line.startswith("track"):
             self.current_line = self.current_line.strip()
-            self.current_line_is_bed = False
+            self.current_line_is_junc = False
             self.current_record = None
             return None
 
-        self.current_line_is_bed = True
+        self.current_line_is_junc = True
         elem = self.current_line.strip().split("\t")
 
         if not self.nitems:
@@ -76,7 +83,7 @@ class BED(object):
                 raise exceptions.G2GBedError("Improperly formatted BED file")
 
         try:
-            bed_data = {'chrom': elem[0],
+            junc_data = {'chrom': elem[0],
                         'start': int(elem[1]),
                         'end': int(elem[2]),
                         'name': elem[3] if self.nitems > 3 else None,
@@ -84,7 +91,7 @@ class BED(object):
                         'strand':  elem[5] if self.nitems > 5 else None,
                         'extra': elem[6:] if self.nitems > 6 else None}
 
-            self.current_record = BEDRecord(**bed_data)
+            self.current_record = JuncRecord(**junc_data)
             return self.current_record
         except IndexError as ie:
             LOG.debug(ie.message)
@@ -96,9 +103,9 @@ class BED(object):
 
 # TODO: kb test
 from tqdm import tqdm
-def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
+def convert_junc_file(vci_file, input_file, output_file=None, reverse=False):
     """
-    Convert BED coordinates.
+    Convert JUNC coordinates.
 
     :param vci_file: VCI input file
     :type vci_file: :class:`.chain.ChainFile`
@@ -124,40 +131,42 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
     input_file = g2g_utils.check_file(input_file)
     LOG.info("INPUT FILE: {0}".format(input_file))
 
-    bed_out = None
-    bed_unmapped_file = None
+    junc_out = None
+    junc_unmapped_file = None
 
     if output_file:
         output_file = g2g_utils.check_file(output_file, 'w')
         unmapped_file = "{0}.unmapped".format(output_file)
-        bed_out = open(output_file, "w")
-        bed_unmapped_file = open(unmapped_file, "w")
+        junc_out = open(output_file, "w")
+        junc_unmapped_file = open(unmapped_file, "w")
         LOG.info("OUTPUT FILE: {0}".format(output_file))
         LOG.info("UNMAPPED FILE: {0}".format(unmapped_file))
     else:
         input_dir, input_name = g2g_utils.get_dir_and_file(input_file)
         unmapped_file = "{0}.unmapped".format(input_name)
         unmapped_file = g2g_utils.check_file(unmapped_file, 'w')
-        bed_out = sys.stdout
-        bed_unmapped_file = open(unmapped_file, "w")
+        junc_out = sys.stdout
+        junc_unmapped_file = open(unmapped_file, "w")
         LOG.info("OUTPUT FILE: stdout")
         LOG.info("UNMAPPED FILE: {0}".format(unmapped_file))
 
     left_right = [''] if vci_file.is_haploid() else ['_L', '_R']
 
     oldname_to_newname = dict()
+    if reverse:
+        uniq_junctions = dict()
 
     LOG.info("Converting BED file...")
 
-    bed_file = BED(input_file)
+    junc_file = BED(input_file)
 
     total = 0
     success = 0
     fail = 0
 
-    for record in tqdm(bed_file):
+    for record in tqdm(junc_file):
 
-        LOG.debug("\nORIGINAL: {0}".format(str(bed_file.current_line).strip()))
+        LOG.debug("\nORIGINAL: {0}".format(str(junc_file.current_line).strip()))
 
         total += 1
 
@@ -167,7 +176,7 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
 
         # If converting reference to personal, then vci and sam have the same contig names.
         # If converting personal to reference, then vci and sam have different contig names.
-        # Each vci contig should be the prefix of one or more bed contigs.
+        # Each vci contig should be the prefix of one or more junc contigs.
         # Name to id converts input sam contig names to output tids. 
         # So, both contig_L and contig_R should be assigned to the same id, contig's id
 
@@ -192,7 +201,7 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
             if mappings is None:
                 # LOG.info((seqid, record.start - 1, record.end),"\tFail due to no mappings")
                 # LOG.info (vci_file.contigs)
-                bed_unmapped_file.write(bed_file.current_line)
+                junc_unmapped_file.write(junc_file.current_line)
                 fail += 0
                 continue
             else:
@@ -206,7 +215,7 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
 
             LOG.debug("({0}, {1}) => ({2}, {3})".format(record.start - 1, record.end, start, end))
 
-            elems = bed_file.current_line.rstrip().split('\t')
+            elems = junc_file.current_line.rstrip().split('\t')
 
             LOG.debug(elems)
 
@@ -214,18 +223,29 @@ def convert_bed_file(vci_file, input_file, output_file=None, reverse=False):
             elems[1] = start
             elems[2] = end
 
-            LOG.debug("     NEW: {0}".format("\t".join(map(str, elems))))
-
-            bed_out.write("\t".join(map(str, elems)))
-            bed_out.write("\n")
+            converted_junc = {field: datum for field, datum in zip(junc_fields, elems)}
+            converted_junc[junc_fields[0]] = seqid
+            converted_junc[junc_fields[1]] = start
+            converted_junc[junc_fields[2]] = end
+            converted_junc = JuncRecord(**converted_junc)
 
             # if we're converting back to haploid, we don't want to do this twice
+            junc_id = seqid+str(start)+str(end)
+            if junc_id in uniq_junctions:
+                uniq_junctions[junc_id] = converted_junc
+            else:
+                uniq_junctions[junc_id] = add_JuncRecords(uniq_junctions[junc_id], converted_junc)
             if reverse:
                 break
+    
+    for id, junc in uniq_junctions.items():
+        LOG.debug("     NEW: {0}".format("\t".join(map(str, elems))))
+        junc_out.write("\t".join(map(str, junc)))
+        junc_out.write("\n")
 
-    bed_out.close()
-    bed_unmapped_file.close()
+
+    junc_out.close()
+    junc_unmapped_file.close()
 
     LOG.info("Converted {0:,} of {1:,} records".format(success, total))
-    LOG.info('BED file converted')
-
+    LOG.info('JUNC file converted')
