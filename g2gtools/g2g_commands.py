@@ -74,7 +74,7 @@ def command_convert(raw_args, prog=None):
 
     # optional
     parser.add_argument("-f", "--format", dest="format", metavar='bam|sam|gtf|bed|gff|junc|tab',
-                        choices=['bam', 'sam', 'gtf', 'bed', 'gff', 'junc','tab'])  # ** added 'gff'
+                        choices=['bam', 'sam', 'gtf', 'bed', 'gff', 'junc', 'tab'])  # ** added 'gff'
     parser.add_argument("-o", "--output", dest="output", metavar="Output_File")
     parser.add_argument("-s", "--out_suffix", dest="out_suffix", metavar="Output_File")
     parser.add_argument("--reverse", dest="reverse", action='store_true')
@@ -139,7 +139,9 @@ def command_convert(raw_args, prog=None):
                     file_format = 'TAB'
                 else:
                     raise exceptions.G2GValueError("File format cannot be determined, please specify.")
-
+            else:
+                file_format = file_format.upper()
+            
             if file_format in ['BAM', 'SAM']:
                 bsam.convert_bam_file(vci_file=vci_file, file_in=file, file_out=outfile, reverse=args.reverse)
             elif file_format in ['GTF']:
@@ -155,9 +157,8 @@ def command_convert(raw_args, prog=None):
             # it will still use the same module "gtf" but different function convert_gff_file
             elif file_format in ['GFF']:
                 gtf.convert_gff_file(vci_file=vci_file, input_file=args.input, output_file=outfile, reverse=args.reverse)
-
             else:
-                raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, or BED to BED are supported")
+                raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, BED to BED, JUNC to JUNC, or TAB to TAB are supported")
     except KeyboardInterrupt as ki:
         LOG.debug(ki)
     except exceptions.G2GValueError as ve:
