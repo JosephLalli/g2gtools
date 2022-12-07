@@ -2,7 +2,10 @@
 
 History
 -------
+
 0.3.0 (12/7/2022)
+~~~~~~~~~~~~~~~~~~
+
 * Fixed reverse conversions
 * Periods can now be in contig names
 * New file formats:
