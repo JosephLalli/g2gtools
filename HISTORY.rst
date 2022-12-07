@@ -3,6 +3,11 @@
 History
 -------
 
+0.3.1 (12/7/2022)
+~~~~~~~~~~~~~~~~~~
+
+* Hotfix for multifile inputs. Output file names are now auto-generated for more than one input.
+
 0.3.0 (12/7/2022)
 ~~~~~~~~~~~~~~~~~~
 
