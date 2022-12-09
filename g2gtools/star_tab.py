@@ -228,7 +228,7 @@ def convert_tab_file(vci_file, input_file, output_file=None, reverse=False):
 
             # if we're converting back to haploid, we don't want to do this twice
             junc_id = seqid+str(start)+str(end)
-            if junc_id in uniq_junctions:
+            if junc_id not in uniq_junctions:
                 uniq_junctions[junc_id] = converted_junc
             else:
                 uniq_junctions[junc_id] = add_TabRecords(uniq_junctions[junc_id], converted_junc)

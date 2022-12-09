@@ -84,12 +84,12 @@ class BED(object):
 
         try:
             junc_data = {'chrom': elem[0],
-                        'start': int(elem[1]),
-                        'end': int(elem[2]),
-                        'name': elem[3] if self.nitems > 3 else None,
-                        'score': elem[4] if self.nitems > 4 else None,
-                        'strand':  elem[5] if self.nitems > 5 else None,
-                        'extra': elem[6:] if self.nitems > 6 else None}
+                         'start': int(elem[1]),
+                         'end': int(elem[2]),
+                         'name': elem[3] if self.nitems > 3 else None,
+                         'score': elem[4] if self.nitems > 4 else None,
+                         'strand':  elem[5] if self.nitems > 5 else None,
+                         'extra': elem[6:] if self.nitems > 6 else None}
 
             self.current_record = JuncRecord(**junc_data)
             return self.current_record
@@ -230,7 +230,7 @@ def convert_junc_file(vci_file, input_file, output_file=None, reverse=False):
 
             # if we're converting back to haploid, we don't want to do this twice
             junc_id = seqid+str(start)+str(end)
-            if junc_id in uniq_junctions:
+            if junc_id not in uniq_junctions:
                 uniq_junctions[junc_id] = converted_junc
             else:
                 uniq_junctions[junc_id] = add_JuncRecords(uniq_junctions[junc_id], converted_junc)
