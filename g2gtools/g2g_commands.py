@@ -108,10 +108,13 @@ def command_convert(raw_args, prog=None):
                 raise exceptions.G2GValueError("Only BAM/SAM to BAM/SAM, GTF to GTF, BED to BED, JUNC to JUNC, or TAB to TAB are supported")
         
         for file in args.input:
+            print (args.input)
+            print (file)
             if len(args.input) == 1:
                 outfile = args.output
             else:
                 outfile = os.path.splitext(args.input)[0] + args.out_suffix
+                print (outfile)
             if not args.format:
                 # try to determine the type from the input
                 file_all_caps = file.upper()
@@ -135,7 +138,7 @@ def command_convert(raw_args, prog=None):
             vci_file = g2g_utils.check_file(vci_file)
             vci_file = vci.VCIFile(vci_file)
             vci_file.parse(args.reverse)
-
+            print (file_format)
             if file_format in ['BAM', 'SAM']:
                 bsam.convert_bam_file(vci_file=vci_file, file_in=file, file_out=outfile, reverse=args.reverse)
             elif file_format in ['GTF']:
@@ -379,9 +382,6 @@ def command_fasta_extract(raw_args, prog=None):
             # simple region
             LOG.debug('ARGS.REGION={}'.format(args.region))
             region = g2g.parse_region(args.region, base=1)
-
-
-            #region.name = "{}:{}-{}".format(region.seq_id, region.start, region.end)
 
             LOG.debug("--> start = {}".format(region.start))
             LOG.debug("--> _start = {}".format(region._start))
