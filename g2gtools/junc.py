@@ -16,15 +16,13 @@ from . import g2g_utils
 from . import vci
 
 
-junc_fields = ["chrom", "start", "end", "name", "score", "strand", 
-               "thickStart","thickEnd","color", "blockCount", "blockSizes", "blockStart"]
+junc_fields = ["chrom", "start", "end", "name", "score", "strand", "extra"]
 JuncRecord = collections.namedtuple("JuncRecord", junc_fields)
 
 def add_JuncRecords(a, b):
     assert a[0:3] == b[0:3]
     both = str(int(a[4]) + int(b[4]))
-    return JuncRecord(a.chrom, a.start, a.end, a.name, both, a.strand, a.thickStart,
-                      a.thickEnd, a.color, a.blockCount, a.blockSizes, a.blockStart)
+    return JuncRecord(a.chrom, a.start, a.end, a.name, both, a.strand, a.extra)
 
 
 LOG = g2g.get_logger()
@@ -91,12 +89,7 @@ class BED(object):
                          'name': elem[3] if self.nitems > 3 else None,
                          'score': elem[4] if self.nitems > 4 else None,
                          'strand':  elem[5] if self.nitems > 5 else None,
-                         'thickStart': elem[6] if self.nitems > 6 else None,
-                         'thickEnd': elem[6] if self.nitems > 7 else None,
-                         'color': elem[6] if self.nitems > 8 else None,
-                         'blockCount': elem[6] if self.nitems > 9 else None,
-                         'blockSizes': elem[6] if self.nitems > 10 else None,
-                         'blockStart': elem[6] if self.nitems > 11 else None}
+                         'extra': elem[6:].join('\t') if self.nitems > 6 else None}
 
             self.current_record = JuncRecord(**junc_data)
             return self.current_record
