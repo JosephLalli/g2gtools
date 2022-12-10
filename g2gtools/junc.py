@@ -17,7 +17,7 @@ from . import vci
 
 
 junc_fields = ["chrom", "start", "end", "name", "score", "strand", 
-               "thickStart","thickEnd","color", "blockCount", "blockSizes", "blockStarts"]
+               "thickStart","thickEnd","color", "blockCount", "blockSizes", "blockStart"]
 JuncRecord = collections.namedtuple("JuncRecord", junc_fields)
 
 def add_JuncRecords(a, b):
