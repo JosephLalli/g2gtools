@@ -21,8 +21,8 @@ JuncRecord = collections.namedtuple("JuncRecord", junc_fields)
 
 def add_JuncRecords(a, b):
     assert a[0:3] == b[0:3]
-    a[4] = a[4] + b[4]
-    return JuncRecord(a[0:6])
+    # both = a[4] + b[4]
+    return JuncRecord(a[0:4]+(a[4]+b[4],)+a[5:6])
 
 
 LOG = g2g.get_logger()
