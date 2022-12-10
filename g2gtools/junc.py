@@ -89,7 +89,7 @@ class BED(object):
                          'name': elem[3] if self.nitems > 3 else None,
                          'score': elem[4] if self.nitems > 4 else None,
                          'strand':  elem[5] if self.nitems > 5 else None,
-                         'extra': elem[6:].join('\t') if self.nitems > 6 else None}
+                         'extra': '\t'.join(elem[6:]) if self.nitems > 6 else None}
 
             self.current_record = JuncRecord(**junc_data)
             return self.current_record
